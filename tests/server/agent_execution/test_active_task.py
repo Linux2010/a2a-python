@@ -895,6 +895,3 @@ async def test_active_task_subscribe_request_parameter():
     assert len(events) == 0
 
     await active_task.cancel(request_context)
-
-
-
