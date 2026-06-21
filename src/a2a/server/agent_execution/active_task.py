@@ -558,17 +558,6 @@ class ActiveTask:
                     request_context.context_id or '',
                 )
                 self._task_created.set()
-                # Explicitly transition to FAILED state to avoid orphan SUBMITTED rows
-                # when the consumer may not process the exception event.
-                failed_status = TaskStatus(
-                    state=TaskState.TASK_STATE_FAILED,
-                )
-                failed_event = TaskStatusUpdateEvent(
-                    task_id=self._task_id,
-                    context_id=request_context.context_id or '',
-                    status=failed_status,
-                )
-                await self._task_manager.save_task_event(failed_event)
             await self._event_queue_agent.enqueue_event(cast('Event', e))
 
         finally:
