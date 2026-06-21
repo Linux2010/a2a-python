@@ -895,3 +895,57 @@ async def test_active_task_subscribe_request_parameter():
     assert len(events) == 0
 
     await active_task.cancel(request_context)
+
+
+@pytest.mark.asyncio
+async def test_active_task_producer_exception_sets_failed_state():
+    """Test that producer exception explicitly sets FAILED state.
+
+    Regression test for #1067: ActiveTaskRegistry produces orphan SUBMITTED rows
+    when AgentExecutor.execute() raises before emitting any events.
+    """
+    agent_executor = Mock()
+    task_manager = Mock()
+    request_context = Mock(spec=RequestContext)
+    request_context.context_id = 'test-context-id'
+    request_context.call_context = ServerCallContext()
+
+    active_task = ActiveTask(
+        agent_executor=agent_executor,
+        task_id='test-task-id',
+        task_manager=task_manager,
+        push_sender=Mock(),
+    )
+
+    # Simulate executor raising an exception before emitting any events
+    async def execute_mock(req, q):
+        raise RuntimeError('Executor failed before emitting events')
+
+    agent_executor.execute = AsyncMock(side_effect=execute_mock)
+    agent_executor.cancel = AsyncMock()
+    task_manager.get_task = AsyncMock(return_value=None)
+    task_manager.ensure_task_id = AsyncMock(
+        return_value=Task(
+            id='test-task-id',
+            status=TaskStatus(state=TaskState.TASK_STATE_SUBMITTED),
+        )
+    )
+    task_manager.save_task_event = AsyncMock()
+    task_manager.process = AsyncMock(side_effect=lambda x: x)
+
+    await active_task.enqueue_request(request_context)
+    await active_task.start(
+        call_context=ServerCallContext(), create_task_if_missing=True
+    )
+
+    # Wait for producer to finish
+    await asyncio.sleep(0.2)
+
+    # Verify that save_task_event was called with a FAILED status
+    assert task_manager.save_task_event.called
+    # Get the last call to save_task_event
+    last_call = task_manager.save_task_event.call_args
+    if last_call:
+        event = last_call.args[0]
+        assert isinstance(event, TaskStatusUpdateEvent)
+        assert event.status.state == TaskState.TASK_STATE_FAILED
