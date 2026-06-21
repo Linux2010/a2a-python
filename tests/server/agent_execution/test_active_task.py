@@ -949,3 +949,5 @@ async def test_active_task_producer_exception_sets_failed_state():
         event = last_call.args[0]
         assert isinstance(event, TaskStatusUpdateEvent)
         assert event.status.state == TaskState.TASK_STATE_FAILED
+        # Regression test: context_id must be set to avoid InvalidParamsError
+        assert event.context_id == 'test-context-id'

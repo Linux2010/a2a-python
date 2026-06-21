@@ -565,6 +565,7 @@ class ActiveTask:
                 )
                 failed_event = TaskStatusUpdateEvent(
                     task_id=self._task_id,
+                    context_id=request_context.context_id or '',
                     status=failed_status,
                 )
                 await self._task_manager.save_task_event(failed_event)
